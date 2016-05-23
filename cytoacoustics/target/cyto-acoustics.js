@@ -8956,6 +8956,13 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$Model = F8(
 	function (a, b, c, d, e, f, g, h) {
 		return {matrix: a, clicked: b, live: c, mode: d, screenSize: e, mousePosition: f, ship: g, theremin: h};
 	});
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$CellEnter = F2(
+	function (a, b) {
+		return {ctor: 'CellEnter', _0: a, _1: b};
+	});
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseDown = function (a) {
+	return {ctor: 'MouseDown', _0: a};
+};
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$ToggleTheremin = {ctor: 'ToggleTheremin'};
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$CellClick = F2(
 	function (a, b) {
@@ -8968,9 +8975,11 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$viewCell = F3(
 			_elm_lang$core$Native_List.fromArray(
 				[
 					_elm_lang$html$Html_Attributes$class(
-					cell ? 'on' : 'off'),
+					cell ? 'on noselect' : 'off noselect'),
 					_elm_lang$html$Html_Events$onClick(
-					A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$CellClick, row, col))
+					A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$CellClick, row, col)),
+					_elm_lang$html$Html_Events$onMouseEnter(
+					A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$CellEnter, row, col))
 				]),
 			_elm_lang$core$Native_List.fromArray(
 				[]));
@@ -8980,7 +8989,9 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$viewRow = F2(
 		return A2(
 			_elm_lang$html$Html$tr,
 			_elm_lang$core$Native_List.fromArray(
-				[]),
+				[
+					_elm_lang$html$Html_Attributes$class('noselect')
+				]),
 			_elm_lang$core$Array$toList(
 				A2(
 					_elm_lang$core$Array$indexedMap,
@@ -8991,7 +9002,13 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$view = function (model) {
 	return A2(
 		_elm_lang$html$Html$table,
 		_elm_lang$core$Native_List.fromArray(
-			[]),
+			[
+				_elm_lang$html$Html_Attributes$class('noselect'),
+				_elm_lang$html$Html_Events$onMouseDown(
+				_lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseDown(true)),
+				_elm_lang$html$Html_Events$onMouseUp(
+				_lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseDown(false))
+			]),
 		_elm_lang$core$Array$toList(
 			A2(_elm_lang$core$Array$indexedMap, _lourds_n_cie$cyto_acoustics$Cytoacoustics$viewRow, model.matrix)));
 };
@@ -9164,7 +9181,7 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$update = F2(
 						_elm_lang$core$Native_Utils.update(
 							model,
 							{screenSize: _p8._0}));
-				default:
+				case 'ToggleTheremin':
 					return {
 						ctor: '_Tuple2',
 						_0: _elm_lang$core$Native_Utils.update(
@@ -9174,6 +9191,24 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$update = F2(
 							}),
 						_1: _lourds_n_cie$cyto_acoustics$Cytoacoustics$audio(
 							A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$NormedMousePosition, 1 / 3, 1))
+					};
+				case 'CellEnter':
+					if (model.clicked) {
+						var _v11 = A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$CellClick, _p8._0, _p8._1),
+							_v12 = model;
+						msg = _v11;
+						model = _v12;
+						continue update;
+					} else {
+						return {ctor: '_Tuple2', _0: model, _1: _elm_lang$core$Platform_Cmd$none};
+					}
+				default:
+					return {
+						ctor: '_Tuple2',
+						_0: _elm_lang$core$Native_Utils.update(
+							model,
+							{clicked: _p8._0}),
+						_1: _elm_lang$core$Platform_Cmd$none
 					};
 			}
 		}
