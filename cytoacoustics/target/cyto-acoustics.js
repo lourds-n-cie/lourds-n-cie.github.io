@@ -3205,10 +3205,11 @@ function toEffect(isCmd, home, taggers, value)
 {
 	function applyTaggers(x)
 	{
-		while (taggers)
+		var temp = taggers;
+		while (temp)
 		{
-			x = taggers.tagger(x);
-			taggers = taggers.rest;
+			x = temp.tagger(x);
+			temp = temp.rest;
 		}
 		return x;
 	}
@@ -5531,7 +5532,10 @@ function badOneOf(problems)
 	return { tag: 'oneOf', problems: problems };
 }
 
-var bad = { tag: 'fail' };
+function bad(msg)
+{
+	return { tag: 'fail', msg: msg };
+}
 
 function badToString(problem)
 {
@@ -5567,7 +5571,8 @@ function badToString(problem)
 
 			case 'fail':
 				return 'I ran into a `fail` decoder'
-					+ (context === '_' ? '' : ' at ' + context);
+					+ (context === '_' ? '' : ' at ' + context)
+					+ ': ' + problem.msg;
 		}
 	}
 }
@@ -5614,14 +5619,19 @@ function runHelp(decoder, value)
 				: badPrimitive('a Bool', value);
 
 		case 'int':
-			var isNotInt =
-				typeof value !== 'number'
-				|| !(-2147483647 < value && value < 2147483647 && (value | 0) === value)
-				|| !(isFinite(value) && !(value % 1));
+			if (typeof value !== 'number') {
+				return badPrimitive('an Int', value);
+			}
 
-			return isNotInt
-				? badPrimitive('an Int', value)
-				: ok(value);
+			if (-2147483647 < value && value < 2147483647 && (value | 0) === value) {
+				return ok(value);
+			}
+
+			if (isFinite(value) && !(value % 1)) {
+				return ok(value);
+			}
+
+			return badPrimitive('an Int', value);
 
 		case 'float':
 			return (typeof value === 'number')
@@ -5701,7 +5711,7 @@ function runHelp(decoder, value)
 		case 'key-value':
 			if (typeof value !== 'object' || value === null || value instanceof Array)
 			{
-				return err('an object', value);
+				return badPrimitive('an object', value);
 			}
 
 			var keyValuePairs = _elm_lang$core$Native_List.Nil;
@@ -5790,7 +5800,7 @@ function runHelp(decoder, value)
 			return badOneOf(errors);
 
 		case 'fail':
-			return bad;
+			return bad(decoder.msg);
 
 		case 'succeed':
 			return ok(decoder.msg);
@@ -6749,11 +6759,24 @@ function render(vNode, eventNode)
 			return render(vNode.node, eventNode);
 
 		case 'tagger':
+			var subNode = vNode.node;
+			var tagger = vNode.tagger;
+		
+			while (subNode.type === 'tagger')
+			{
+				typeof tagger !== 'object'
+					? tagger = [tagger, subNode.tagger]
+					: tagger.push(subNode.tagger);
+
+				subNode = subNode.node;
+			}
+            
 			var subEventRoot = {
-				tagger: vNode.tagger,
+				tagger: tagger,
 				parent: eventNode
 			};
-			var domNode = render(vNode.node, subEventRoot);
+			
+			var domNode = render(subNode, subEventRoot);
 			domNode.elm_event_node_ref = subEventRoot;
 			return domNode;
 
@@ -6848,6 +6871,7 @@ function applyEvents(domNode, eventNode, events)
 		if (typeof value === 'undefined')
 		{
 			domNode.removeEventListener(key, handler);
+			allHandlers[key] = undefined;
 		}
 		else if (typeof handler === 'undefined')
 		{
@@ -7163,10 +7187,7 @@ function diffFacts(a, b, category)
 				(category === STYLE_KEY)
 					? ''
 					:
-				(category === EVENT_KEY)
-					? null
-					:
-				(category === ATTR_KEY)
+				(category === EVENT_KEY || category === ATTR_KEY)
 					? undefined
 					:
 				{ namespace: a[aKey].namespace, value: undefined };
@@ -7281,7 +7302,14 @@ function addDomNodesHelp(domNode, vNode, patches, i, low, high, eventNode)
 	switch (vNode.type)
 	{
 		case 'tagger':
-			return addDomNodesHelp(domNode, vNode.node, patches, i, low + 1, high, domNode.elm_event_node_ref);
+			var subNode = vNode.node;
+            
+			while (subNode.type === "tagger")
+			{
+				subNode = subNode.node;
+			}
+            
+			return addDomNodesHelp(domNode, subNode, patches, i, low + 1, high, domNode.elm_event_node_ref);
 
 		case 'node':
 			var vChildren = vNode.children;
@@ -7393,10 +7421,9 @@ function redraw(domNode, vNode, eventNode)
 	var parentNode = domNode.parentNode;
 	var newNode = render(vNode, eventNode);
 
-	var ref = domNode.elm_event_node_ref
-	if (typeof ref !== 'undefined')
+	if (typeof newNode.elm_event_node_ref === 'undefined')
 	{
-		newNode.elm_event_node_ref = ref;
+		newNode.elm_event_node_ref = domNode.elm_event_node_ref;
 	}
 
 	if (parentNode && newNode !== domNode)
@@ -8366,22 +8393,161 @@ var _elm_lang$window$Window$subMap = F2(
 	});
 _elm_lang$core$Native_Platform.effectManagers['Window'] = {pkg: 'elm-lang/window', init: _elm_lang$window$Window$init, onEffects: _elm_lang$window$Window$onEffects, onSelfMsg: _elm_lang$window$Window$onSelfMsg, tag: 'sub', subMap: _elm_lang$window$Window$subMap};
 
-var _lourds_n_cie$cyto_acoustics$Matrix$mirror = _elm_lang$core$List$map(
-	function (_p0) {
+var _lourds_n_cie$cyto_acoustics$Matrix$getCellWithDefault = F4(
+	function ($default, matrix, rowIdx, colIdx) {
+		var maybeRow = A2(_elm_lang$core$Array$get, rowIdx, matrix);
+		return A2(
+			_elm_lang$core$Maybe$withDefault,
+			$default,
+			A2(
+				_elm_lang$core$Maybe$andThen,
+				maybeRow,
+				_elm_lang$core$Array$get(colIdx)));
+	});
+var _lourds_n_cie$cyto_acoustics$Matrix$rndRow = F3(
+	function (size, decision, seed) {
+		return A3(
+			_elm_lang$core$Basics$flip,
+			_elm_lang$core$Random$step,
+			seed,
+			A2(
+				_elm_lang$core$Random$list,
+				size,
+				A2(
+					_elm_lang$core$Random$map,
+					decision,
+					A2(_elm_lang$core$Random$float, 0, 1))));
+	});
+var _lourds_n_cie$cyto_acoustics$Matrix$concatRndRow = F4(
+	function (list, size, decision, seed) {
+		var _p0 = A3(_lourds_n_cie$cyto_acoustics$Matrix$rndRow, size, decision, seed);
+		var newRow = _p0._0;
+		var newSeed = _p0._1;
+		return {
+			ctor: '_Tuple2',
+			_0: A2(_elm_lang$core$List_ops['::'], newRow, list),
+			_1: newSeed
+		};
+	});
+var _lourds_n_cie$cyto_acoustics$Matrix$initRnd = F3(
+	function (decisionFct, seed, size) {
+		return _elm_lang$core$Array$fromList(
+			A2(
+				_elm_lang$core$List$map,
+				_elm_lang$core$Array$fromList,
+				_elm_lang$core$Basics$fst(
+					A3(
+						_elm_lang$core$Array$foldl,
+						F2(
+							function (_p2, _p1) {
+								var _p3 = _p1;
+								return A4(_lourds_n_cie$cyto_acoustics$Matrix$concatRndRow, _p3._0, size, decisionFct, _p3._1);
+							}),
+						{
+							ctor: '_Tuple2',
+							_0: _elm_lang$core$Native_List.fromArray(
+								[]),
+							_1: _elm_lang$core$Random$initialSeed(seed)
+						},
+						A2(_elm_lang$core$Array$initialize, size, _elm_lang$core$Basics$identity)))));
+	});
+var _lourds_n_cie$cyto_acoustics$Matrix$size = _elm_lang$core$Array$length;
+var _lourds_n_cie$cyto_acoustics$Matrix$init = F2(
+	function (el, size) {
+		return A2(
+			_elm_lang$core$Array$repeat,
+			size,
+			A2(_elm_lang$core$Array$repeat, size, el));
+	});
+
+var _lourds_n_cie$cyto_acoustics$Patterns$patternRadio = F2(
+	function (selected, _p0) {
 		var _p1 = _p0;
-		return {ctor: '_Tuple2', _0: -1 * _p1._0, _1: _p1._1};
+		var _p3 = _p1._0;
+		var _p2 = _p1._2;
+		return _elm_lang$core$Native_List.fromArray(
+			[
+				A2(
+				_elm_lang$html$Html$input,
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html_Attributes$type$('radio'),
+						_elm_lang$html$Html_Attributes$name('brush'),
+						_elm_lang$html$Html_Attributes$class('patternradio'),
+						_elm_lang$html$Html_Attributes$id(_p2),
+						_elm_lang$html$Html_Attributes$value(_p2),
+						_elm_lang$html$Html_Attributes$checked(
+						_elm_lang$core$Native_Utils.eq(selected, _p3)),
+						_elm_lang$html$Html_Events$onCheck(
+						_elm_lang$core$Basics$always(_p3))
+					]),
+				_elm_lang$core$Native_List.fromArray(
+					[])),
+				A2(
+				_elm_lang$html$Html$label,
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html_Attributes$class('pattern-selector'),
+						_elm_lang$html$Html_Attributes$for(_p2)
+					]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html$text(_p1._1)
+					]))
+			]);
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$rotateRight = _elm_lang$core$List$map(
-	function (_p2) {
-		var _p3 = _p2;
-		return {ctor: '_Tuple2', _0: _p3._1, _1: -1 * _p3._0};
+var _lourds_n_cie$cyto_acoustics$Patterns$radioDiv = F3(
+	function (selected, patterns, title) {
+		return A2(
+			_elm_lang$html$Html$div,
+			_elm_lang$core$Native_List.fromArray(
+				[
+					_elm_lang$html$Html_Attributes$class('radio-group')
+				]),
+			A2(
+				_elm_lang$core$List_ops['::'],
+				A2(
+					_elm_lang$html$Html$h4,
+					_elm_lang$core$Native_List.fromArray(
+						[]),
+					_elm_lang$core$Native_List.fromArray(
+						[
+							_elm_lang$html$Html$text(title)
+						])),
+				A2(
+					_elm_lang$core$List$concatMap,
+					_lourds_n_cie$cyto_acoustics$Patterns$patternRadio(selected),
+					patterns)));
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$rotateLeft = _elm_lang$core$List$map(
+var _lourds_n_cie$cyto_acoustics$Patterns$rotateRight = _elm_lang$core$List$map(
 	function (_p4) {
 		var _p5 = _p4;
-		return {ctor: '_Tuple2', _0: -1 * _p5._1, _1: _p5._0};
+		return {ctor: '_Tuple2', _0: _p5._1, _1: -1 * _p5._0};
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$gunDOWN = _elm_lang$core$Native_List.fromArray(
+var _lourds_n_cie$cyto_acoustics$Patterns$rotateLeft = _elm_lang$core$List$map(
+	function (_p6) {
+		var _p7 = _p6;
+		return {ctor: '_Tuple2', _0: -1 * _p7._1, _1: _p7._0};
+	});
+var _lourds_n_cie$cyto_acoustics$Patterns$rotate180 = function (_p8) {
+	return _lourds_n_cie$cyto_acoustics$Patterns$rotateLeft(
+		_lourds_n_cie$cyto_acoustics$Patterns$rotateLeft(_p8));
+};
+var _lourds_n_cie$cyto_acoustics$Patterns$applyRot = F2(
+	function (rot, structure) {
+		var _p9 = rot;
+		switch (_p9.ctor) {
+			case 'Rot0':
+				return structure;
+			case 'Rot90':
+				return _lourds_n_cie$cyto_acoustics$Patterns$rotateLeft(structure);
+			case 'Rot180':
+				return _lourds_n_cie$cyto_acoustics$Patterns$rotate180(structure);
+			default:
+				return _lourds_n_cie$cyto_acoustics$Patterns$rotateRight(structure);
+		}
+	});
+var _lourds_n_cie$cyto_acoustics$Patterns$gunS = _elm_lang$core$Native_List.fromArray(
 	[
 		{ctor: '_Tuple2', _0: 1, _1: 5},
 		{ctor: '_Tuple2', _0: 1, _1: 6},
@@ -8420,7 +8586,7 @@ var _lourds_n_cie$cyto_acoustics$Matrix$gunDOWN = _elm_lang$core$Native_List.fro
 		{ctor: '_Tuple2', _0: 36, _1: 3},
 		{ctor: '_Tuple2', _0: 36, _1: 4}
 	]);
-var _lourds_n_cie$cyto_acoustics$Matrix$gliderDOWN = _elm_lang$core$Native_List.fromArray(
+var _lourds_n_cie$cyto_acoustics$Patterns$gliderSW = _elm_lang$core$Native_List.fromArray(
 	[
 		{ctor: '_Tuple2', _0: 0, _1: 0},
 		{ctor: '_Tuple2', _0: -1, _1: 0},
@@ -8428,102 +8594,150 @@ var _lourds_n_cie$cyto_acoustics$Matrix$gliderDOWN = _elm_lang$core$Native_List.
 		{ctor: '_Tuple2', _0: 0, _1: 1},
 		{ctor: '_Tuple2', _0: -1, _1: 2}
 	]);
-var _lourds_n_cie$cyto_acoustics$Matrix$ships = _elm_lang$core$Dict$fromList(
-	_elm_lang$core$Native_List.fromArray(
-		[
-			{
-			ctor: '_Tuple2',
-			_0: 'Glider UP',
-			_1: _lourds_n_cie$cyto_acoustics$Matrix$rotateLeft(
-				_lourds_n_cie$cyto_acoustics$Matrix$rotateLeft(_lourds_n_cie$cyto_acoustics$Matrix$gliderDOWN))
-		},
-			{ctor: '_Tuple2', _0: 'Glider DOWN', _1: _lourds_n_cie$cyto_acoustics$Matrix$gliderDOWN},
-			{
-			ctor: '_Tuple2',
-			_0: 'Glider LEFT',
-			_1: _lourds_n_cie$cyto_acoustics$Matrix$rotateRight(_lourds_n_cie$cyto_acoustics$Matrix$gliderDOWN)
-		},
-			{
-			ctor: '_Tuple2',
-			_0: 'Glider RIGHT',
-			_1: _lourds_n_cie$cyto_acoustics$Matrix$rotateLeft(_lourds_n_cie$cyto_acoustics$Matrix$gliderDOWN)
-		},
-			{
-			ctor: '_Tuple2',
-			_0: 'Gun UP',
-			_1: _lourds_n_cie$cyto_acoustics$Matrix$rotateLeft(
-				_lourds_n_cie$cyto_acoustics$Matrix$rotateLeft(_lourds_n_cie$cyto_acoustics$Matrix$gunDOWN))
-		},
-			{ctor: '_Tuple2', _0: 'Gun DOWN', _1: _lourds_n_cie$cyto_acoustics$Matrix$gunDOWN},
-			{
-			ctor: '_Tuple2',
-			_0: 'Gun LEFT',
-			_1: _lourds_n_cie$cyto_acoustics$Matrix$rotateRight(_lourds_n_cie$cyto_acoustics$Matrix$gunDOWN)
-		},
-			{
-			ctor: '_Tuple2',
-			_0: 'Gun RIGHT',
-			_1: _lourds_n_cie$cyto_acoustics$Matrix$rotateLeft(_lourds_n_cie$cyto_acoustics$Matrix$gunDOWN)
-		}
-		]));
-var _lourds_n_cie$cyto_acoustics$Matrix$diffRows = F3(
-	function (row, oldRow, newRow) {
-		return A2(
-			_elm_lang$core$List$concatMap,
-			_elm_lang$core$Basics$identity,
-			A3(
-				_elm_lang$core$List$map2,
-				F2(
-					function (_p7, _p6) {
-						var _p8 = _p7;
-						var _p9 = _p6;
-						var _p10 = _p9._1;
-						return (_p10 && (!_elm_lang$core$Native_Utils.eq(_p8._1, _p10))) ? _elm_lang$core$Native_List.fromArray(
-							[
-								{ctor: '_Tuple2', _0: row, _1: _p8._0}
-							]) : _elm_lang$core$Native_List.fromArray(
-							[]);
-					}),
-				_elm_lang$core$Array$toIndexedList(oldRow),
-				_elm_lang$core$Array$toIndexedList(newRow)));
-	});
-var _lourds_n_cie$cyto_acoustics$Matrix$diff = F2(
-	function (oldMatrix, newMatrix) {
-		return A2(
-			_elm_lang$core$List$concatMap,
-			_elm_lang$core$Basics$identity,
-			A3(
-				_elm_lang$core$List$map2,
-				F2(
-					function (_p12, _p11) {
-						var _p13 = _p12;
-						var _p14 = _p11;
-						return A3(_lourds_n_cie$cyto_acoustics$Matrix$diffRows, _p13._0, _p13._1, _p14._1);
-					}),
-				_elm_lang$core$Array$toIndexedList(oldMatrix),
-				_elm_lang$core$Array$toIndexedList(newMatrix)));
-	});
-var _lourds_n_cie$cyto_acoustics$Matrix$getCellWithDefault = F4(
-	function ($default, matrix, rowIdx, colIdx) {
-		return A2(
-			_elm_lang$core$Maybe$withDefault,
-			$default,
-			A2(
-				_elm_lang$core$Array$get,
-				colIdx,
+var _lourds_n_cie$cyto_acoustics$Patterns$structureOf = function (pattern) {
+	var _p10 = pattern;
+	switch (_p10.ctor) {
+		case 'None':
+			return _elm_lang$core$Native_List.fromArray(
+				[
+					{ctor: '_Tuple2', _0: 0, _1: 0}
+				]);
+		case 'Glider':
+			return A2(_lourds_n_cie$cyto_acoustics$Patterns$applyRot, _p10._0, _lourds_n_cie$cyto_acoustics$Patterns$gliderSW);
+		default:
+			return A2(_lourds_n_cie$cyto_acoustics$Patterns$applyRot, _p10._0, _lourds_n_cie$cyto_acoustics$Patterns$gunS);
+	}
+};
+var _lourds_n_cie$cyto_acoustics$Patterns$Rot270 = {ctor: 'Rot270'};
+var _lourds_n_cie$cyto_acoustics$Patterns$Rot180 = {ctor: 'Rot180'};
+var _lourds_n_cie$cyto_acoustics$Patterns$Rot90 = {ctor: 'Rot90'};
+var _lourds_n_cie$cyto_acoustics$Patterns$Rot0 = {ctor: 'Rot0'};
+var _lourds_n_cie$cyto_acoustics$Patterns$Gun = function (a) {
+	return {ctor: 'Gun', _0: a};
+};
+var _lourds_n_cie$cyto_acoustics$Patterns$guns = _elm_lang$core$Native_List.fromArray(
+	[
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Gun(_lourds_n_cie$cyto_acoustics$Patterns$Rot180),
+		_1: '↑',
+		_2: 'patterngn'
+	},
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Gun(_lourds_n_cie$cyto_acoustics$Patterns$Rot90),
+		_1: '→',
+		_2: 'patternge'
+	},
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Gun(_lourds_n_cie$cyto_acoustics$Patterns$Rot0),
+		_1: '↓',
+		_2: 'patterngs'
+	},
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Gun(_lourds_n_cie$cyto_acoustics$Patterns$Rot270),
+		_1: '←',
+		_2: 'patterngw'
+	}
+	]);
+var _lourds_n_cie$cyto_acoustics$Patterns$Glider = function (a) {
+	return {ctor: 'Glider', _0: a};
+};
+var _lourds_n_cie$cyto_acoustics$Patterns$gliders = _elm_lang$core$Native_List.fromArray(
+	[
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Glider(_lourds_n_cie$cyto_acoustics$Patterns$Rot180),
+		_1: '↗',
+		_2: 'patterngne'
+	},
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Glider(_lourds_n_cie$cyto_acoustics$Patterns$Rot90),
+		_1: '↘',
+		_2: 'patterngse'
+	},
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Glider(_lourds_n_cie$cyto_acoustics$Patterns$Rot0),
+		_1: '↙',
+		_2: 'patterngsw'
+	},
+		{
+		ctor: '_Tuple3',
+		_0: _lourds_n_cie$cyto_acoustics$Patterns$Glider(_lourds_n_cie$cyto_acoustics$Patterns$Rot270),
+		_1: '↖',
+		_2: 'patterngnw'
+	}
+	]);
+var _lourds_n_cie$cyto_acoustics$Patterns$None = {ctor: 'None'};
+var _lourds_n_cie$cyto_acoustics$Patterns$init = _lourds_n_cie$cyto_acoustics$Patterns$None;
+var _lourds_n_cie$cyto_acoustics$Patterns$view = function (pattern) {
+	return A2(
+		_elm_lang$html$Html$section,
+		_elm_lang$core$Native_List.fromArray(
+			[
+				_elm_lang$html$Html_Attributes$class('brush')
+			]),
+		_elm_lang$core$Native_List.fromArray(
+			[
 				A2(
-					_elm_lang$core$Maybe$withDefault,
-					A2(
-						_elm_lang$core$Array$repeat,
-						_elm_lang$core$Array$length(matrix),
-						false),
-					A2(_elm_lang$core$Array$get, rowIdx, matrix))));
-	});
-var _lourds_n_cie$cyto_acoustics$Matrix$getCell = _lourds_n_cie$cyto_acoustics$Matrix$getCellWithDefault(false);
-var _lourds_n_cie$cyto_acoustics$Matrix$nextCell = F3(
+				_elm_lang$html$Html$h3,
+				_elm_lang$core$Native_List.fromArray(
+					[]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html$text('Patterns')
+					])),
+				A2(
+				_elm_lang$html$Html$small,
+				_elm_lang$core$Native_List.fromArray(
+					[]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						A2(
+						_elm_lang$html$Html$em,
+						_elm_lang$core$Native_List.fromArray(
+							[]),
+						_elm_lang$core$Native_List.fromArray(
+							[
+								_elm_lang$html$Html$text('What will be drawn on the grid when you click')
+							]))
+					])),
+				A3(
+				_lourds_n_cie$cyto_acoustics$Patterns$radioDiv,
+				pattern,
+				_elm_lang$core$Native_List.fromArray(
+					[
+						{ctor: '_Tuple3', _0: _lourds_n_cie$cyto_acoustics$Patterns$None, _1: '1 cell', _2: 'patternsingle'}
+					]),
+				'Cells'),
+				A3(_lourds_n_cie$cyto_acoustics$Patterns$radioDiv, pattern, _lourds_n_cie$cyto_acoustics$Patterns$gliders, 'Gliders'),
+				A3(_lourds_n_cie$cyto_acoustics$Patterns$radioDiv, pattern, _lourds_n_cie$cyto_acoustics$Patterns$guns, 'Guns')
+			]));
+};
+
+var _lourds_n_cie$cyto_acoustics$GameGrid$maybeToList = function (m) {
+	var _p0 = m;
+	if (_p0.ctor === 'Just') {
+		return _elm_lang$core$Native_List.fromArray(
+			[_p0._0]);
+	} else {
+		return _elm_lang$core$Native_List.fromArray(
+			[]);
+	}
+};
+var _lourds_n_cie$cyto_acoustics$GameGrid$tuple3fst = function (_p1) {
+	var _p2 = _p1;
+	return _p2._0;
+};
+var _lourds_n_cie$cyto_acoustics$GameGrid$getCell = _lourds_n_cie$cyto_acoustics$Matrix$getCellWithDefault(false);
+var _lourds_n_cie$cyto_acoustics$GameGrid$nextCell = F3(
 	function (matrix, rowIdx, colIdx) {
-		var size = _elm_lang$core$Array$length(matrix);
-		var oldValue = A3(_lourds_n_cie$cyto_acoustics$Matrix$getCell, matrix, rowIdx, colIdx);
+		var size = _lourds_n_cie$cyto_acoustics$Matrix$size(matrix);
+		var oldValue = A3(_lourds_n_cie$cyto_acoustics$GameGrid$getCell, matrix, rowIdx, colIdx);
 		var newValue = function (l) {
 			return (oldValue && ((_elm_lang$core$Native_Utils.cmp(l, 1) > 0) && (_elm_lang$core$Native_Utils.cmp(l, 4) < 0))) || _elm_lang$core$Native_Utils.eq(l, 3);
 		}(
@@ -8532,7 +8746,7 @@ var _lourds_n_cie$cyto_acoustics$Matrix$nextCell = F3(
 					_elm_lang$core$List$filter,
 					function (p) {
 						return A3(
-							_lourds_n_cie$cyto_acoustics$Matrix$getCell,
+							_lourds_n_cie$cyto_acoustics$GameGrid$getCell,
 							matrix,
 							_elm_lang$core$Basics$fst(p),
 							_elm_lang$core$Basics$snd(p));
@@ -8566,11 +8780,11 @@ var _lourds_n_cie$cyto_acoustics$Matrix$nextCell = F3(
 								[-1, 0, 1]))))));
 		return {ctor: '_Tuple2', _0: oldValue, _1: newValue};
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$toBalance = F2(
+var _lourds_n_cie$cyto_acoustics$GameGrid$toBalance = F2(
 	function (rowSize, rowIndices) {
 		var norm = _elm_lang$core$Basics$toFloat(rowSize - 1) / 2;
-		var _p15 = rowIndices;
-		if (_p15.ctor === '[]') {
+		var _p3 = rowIndices;
+		if (_p3.ctor === '[]') {
 			return _elm_lang$core$Maybe$Nothing;
 		} else {
 			return A2(
@@ -8595,23 +8809,23 @@ var _lourds_n_cie$cyto_acoustics$Matrix$toBalance = F2(
 							rowIndices))));
 		}
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$nextRow = F3(
+var _lourds_n_cie$cyto_acoustics$GameGrid$nextRow = F3(
 	function (matrix, rowIdx, row) {
-		var _p16 = A3(
+		var _p4 = A3(
 			_elm_lang$core$Array$foldr,
 			F2(
-				function (_p18, _p17) {
-					var _p19 = _p18;
-					var _p24 = _p19._1._1;
-					var _p23 = _p19._0;
-					var _p20 = _p17;
-					var _p22 = _p20._1;
-					var _p21 = _p20._2;
+				function (_p6, _p5) {
+					var _p7 = _p6;
+					var _p12 = _p7._1._1;
+					var _p11 = _p7._0;
+					var _p8 = _p5;
+					var _p10 = _p8._1;
+					var _p9 = _p8._2;
 					return {
 						ctor: '_Tuple3',
-						_0: A2(_elm_lang$core$List_ops['::'], _p24, _p20._0),
-						_1: _p24 ? A2(_elm_lang$core$List_ops['::'], _p23, _p22) : _p22,
-						_2: (_p24 && _elm_lang$core$Basics$not(_p19._1._0)) ? A2(_elm_lang$core$List_ops['::'], _p23, _p21) : _p21
+						_0: A2(_elm_lang$core$List_ops['::'], _p12, _p8._0),
+						_1: _p12 ? A2(_elm_lang$core$List_ops['::'], _p11, _p10) : _p10,
+						_2: (_p12 && _elm_lang$core$Basics$not(_p7._1._0)) ? A2(_elm_lang$core$List_ops['::'], _p11, _p9) : _p9
 					};
 				}),
 			{
@@ -8626,27 +8840,27 @@ var _lourds_n_cie$cyto_acoustics$Matrix$nextRow = F3(
 			A2(
 				_elm_lang$core$Array$indexedMap,
 				F2(
-					function (colIdx, _p25) {
+					function (colIdx, _p13) {
 						return {
 							ctor: '_Tuple2',
 							_0: colIdx,
-							_1: A3(_lourds_n_cie$cyto_acoustics$Matrix$nextCell, matrix, rowIdx, colIdx)
+							_1: A3(_lourds_n_cie$cyto_acoustics$GameGrid$nextCell, matrix, rowIdx, colIdx)
 						};
 					}),
 				row));
-		var newRowList = _p16._0;
-		var onCells = _p16._1;
-		var freshOnCells = _p16._2;
-		var size = _elm_lang$core$Array$length(matrix);
+		var newRowList = _p4._0;
+		var onCells = _p4._1;
+		var freshOnCells = _p4._2;
+		var size = _lourds_n_cie$cyto_acoustics$Matrix$size(matrix);
 		return {
 			ctor: '_Tuple4',
 			_0: _elm_lang$core$Array$fromList(newRowList),
 			_1: rowIdx,
-			_2: A2(_lourds_n_cie$cyto_acoustics$Matrix$toBalance, size, onCells),
-			_3: A2(_lourds_n_cie$cyto_acoustics$Matrix$toBalance, size, freshOnCells)
+			_2: A2(_lourds_n_cie$cyto_acoustics$GameGrid$toBalance, size, onCells),
+			_3: A2(_lourds_n_cie$cyto_acoustics$GameGrid$toBalance, size, freshOnCells)
 		};
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$maybePrepend = F3(
+var _lourds_n_cie$cyto_acoustics$GameGrid$maybePrepend = F3(
 	function (l, idx, m) {
 		return A2(
 			_elm_lang$core$Maybe$withDefault,
@@ -8661,19 +8875,19 @@ var _lourds_n_cie$cyto_acoustics$Matrix$maybePrepend = F3(
 				},
 				m));
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$nextGenerationPlus = function (matrix) {
-	var _p26 = A3(
+var _lourds_n_cie$cyto_acoustics$GameGrid$nextGenerationPlus = function (matrix) {
+	var _p14 = A3(
 		_elm_lang$core$Array$foldr,
 		F2(
-			function (_p28, _p27) {
-				var _p29 = _p28;
-				var _p31 = _p29._1;
-				var _p30 = _p27;
+			function (_p16, _p15) {
+				var _p17 = _p16;
+				var _p19 = _p17._1;
+				var _p18 = _p15;
 				return {
 					ctor: '_Tuple3',
-					_0: A2(_elm_lang$core$List_ops['::'], _p29._0, _p30._0),
-					_1: A3(_lourds_n_cie$cyto_acoustics$Matrix$maybePrepend, _p30._1, _p31, _p29._2),
-					_2: A3(_lourds_n_cie$cyto_acoustics$Matrix$maybePrepend, _p30._2, _p31, _p29._3)
+					_0: A2(_elm_lang$core$List_ops['::'], _p17._0, _p18._0),
+					_1: A3(_lourds_n_cie$cyto_acoustics$GameGrid$maybePrepend, _p18._1, _p19, _p17._2),
+					_2: A3(_lourds_n_cie$cyto_acoustics$GameGrid$maybePrepend, _p18._2, _p19, _p17._3)
 				};
 			}),
 		{
@@ -8687,11 +8901,11 @@ var _lourds_n_cie$cyto_acoustics$Matrix$nextGenerationPlus = function (matrix) {
 		},
 		A2(
 			_elm_lang$core$Array$indexedMap,
-			_lourds_n_cie$cyto_acoustics$Matrix$nextRow(matrix),
+			_lourds_n_cie$cyto_acoustics$GameGrid$nextRow(matrix),
 			matrix));
-	var matAsList = _p26._0;
-	var onCells = _p26._1;
-	var freshOnCells = _p26._2;
+	var matAsList = _p14._0;
+	var onCells = _p14._1;
+	var freshOnCells = _p14._2;
 	return {
 		ctor: '_Tuple3',
 		_0: _elm_lang$core$Array$fromList(matAsList),
@@ -8699,19 +8913,19 @@ var _lourds_n_cie$cyto_acoustics$Matrix$nextGenerationPlus = function (matrix) {
 		_2: freshOnCells
 	};
 };
-var _lourds_n_cie$cyto_acoustics$Matrix$nextGeneration = function (matrix) {
+var _lourds_n_cie$cyto_acoustics$GameGrid$nextGeneration = function (matrix) {
 	return A2(
 		_elm_lang$core$Array$map,
-		function (_p32) {
-			var _p33 = _p32;
-			return _p33._0;
+		function (_p20) {
+			var _p21 = _p20;
+			return _p21._0;
 		},
 		A2(
 			_elm_lang$core$Array$indexedMap,
-			_lourds_n_cie$cyto_acoustics$Matrix$nextRow(matrix),
+			_lourds_n_cie$cyto_acoustics$GameGrid$nextRow(matrix),
 			matrix));
 };
-var _lourds_n_cie$cyto_acoustics$Matrix$mapElement = F3(
+var _lourds_n_cie$cyto_acoustics$GameGrid$mapElement = F3(
 	function (idx, arr, updater) {
 		return A2(
 			_elm_lang$core$Maybe$withDefault,
@@ -8727,76 +8941,7 @@ var _lourds_n_cie$cyto_acoustics$Matrix$mapElement = F3(
 				},
 				A2(_elm_lang$core$Array$get, idx, arr)));
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$maybeToList = function (m) {
-	var _p34 = m;
-	if (_p34.ctor === 'Just') {
-		return _elm_lang$core$Native_List.fromArray(
-			[_p34._0]);
-	} else {
-		return _elm_lang$core$Native_List.fromArray(
-			[]);
-	}
-};
-var _lourds_n_cie$cyto_acoustics$Matrix$tuple3fst = function (_p35) {
-	var _p36 = _p35;
-	return _p36._0;
-};
-var _lourds_n_cie$cyto_acoustics$Matrix$rndRow = F3(
-	function (size, decision, seed) {
-		return A3(
-			_elm_lang$core$Basics$flip,
-			_elm_lang$core$Random$step,
-			seed,
-			A2(
-				_elm_lang$core$Random$list,
-				size,
-				A2(
-					_elm_lang$core$Random$map,
-					decision,
-					A2(_elm_lang$core$Random$float, 0, 1))));
-	});
-var _lourds_n_cie$cyto_acoustics$Matrix$concatRndRow = F4(
-	function (list, size, decision, seed) {
-		var _p37 = A3(_lourds_n_cie$cyto_acoustics$Matrix$rndRow, size, decision, seed);
-		var newRow = _p37._0;
-		var newSeed = _p37._1;
-		return {
-			ctor: '_Tuple2',
-			_0: A2(_elm_lang$core$List_ops['::'], newRow, list),
-			_1: newSeed
-		};
-	});
-var _lourds_n_cie$cyto_acoustics$Matrix$initRnd = F2(
-	function (baseSeed, size) {
-		return _elm_lang$core$Array$fromList(
-			A2(
-				_elm_lang$core$List$map,
-				_elm_lang$core$Array$fromList,
-				_elm_lang$core$Basics$fst(
-					A3(
-						_elm_lang$core$Array$foldl,
-						F2(
-							function (_p39, _p38) {
-								var _p40 = _p38;
-								return A4(
-									_lourds_n_cie$cyto_acoustics$Matrix$concatRndRow,
-									_p40._0,
-									size,
-									function (f) {
-										return _elm_lang$core$Native_Utils.cmp(f, 0.75) > 0;
-									},
-									_p40._1);
-							}),
-						{
-							ctor: '_Tuple2',
-							_0: _elm_lang$core$Native_List.fromArray(
-								[]),
-							_1: _elm_lang$core$Random$initialSeed(baseSeed)
-						},
-						A2(_elm_lang$core$Array$initialize, size, _elm_lang$core$Basics$identity)))));
-	});
-var _lourds_n_cie$cyto_acoustics$Matrix$size = _elm_lang$core$Array$length;
-var _lourds_n_cie$cyto_acoustics$Matrix$updateRowCol = F3(
+var _lourds_n_cie$cyto_acoustics$GameGrid$updateRowCol = F3(
 	function (rowIdx, colIdx, matrix) {
 		var oldValue = A4(_lourds_n_cie$cyto_acoustics$Matrix$getCellWithDefault, true, matrix, rowIdx, colIdx);
 		var onCells = oldValue ? _elm_lang$core$Native_List.fromArray(
@@ -8804,81 +8949,133 @@ var _lourds_n_cie$cyto_acoustics$Matrix$updateRowCol = F3(
 			[colIdx]);
 		var mSize = _lourds_n_cie$cyto_acoustics$Matrix$size(matrix);
 		var toList = function (onCells) {
-			return _lourds_n_cie$cyto_acoustics$Matrix$maybeToList(
+			return _lourds_n_cie$cyto_acoustics$GameGrid$maybeToList(
 				A2(
 					_elm_lang$core$Maybe$map,
 					function (f) {
 						return {ctor: '_Tuple2', _0: rowIdx, _1: f};
 					},
-					A2(_lourds_n_cie$cyto_acoustics$Matrix$toBalance, mSize, onCells)));
+					A2(_lourds_n_cie$cyto_acoustics$GameGrid$toBalance, mSize, onCells)));
 		};
 		return {
 			ctor: '_Tuple3',
 			_0: A3(
-				_lourds_n_cie$cyto_acoustics$Matrix$mapElement,
+				_lourds_n_cie$cyto_acoustics$GameGrid$mapElement,
 				rowIdx,
 				matrix,
 				function (row) {
-					return A3(_lourds_n_cie$cyto_acoustics$Matrix$mapElement, colIdx, row, _elm_lang$core$Basics$not);
+					return A3(_lourds_n_cie$cyto_acoustics$GameGrid$mapElement, colIdx, row, _elm_lang$core$Basics$not);
 				}),
 			_1: toList(onCells),
 			_2: toList(onCells)
 		};
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$applyShip = F5(
+var _lourds_n_cie$cyto_acoustics$GameGrid$matrixUpdate = F2(
+	function (model, updateFct) {
+		var _p22 = updateFct(model.matrix);
+		var newMatrix = _p22._0;
+		var onCells = _p22._1;
+		var freshOnCells = _p22._2;
+		return {
+			ctor: '_Tuple3',
+			_0: _elm_lang$core$Native_Utils.update(
+				model,
+				{matrix: newMatrix}),
+			_1: onCells,
+			_2: freshOnCells
+		};
+	});
+var _lourds_n_cie$cyto_acoustics$GameGrid$applyStructure = F5(
 	function (matrix, mSize, row, col, ship) {
-		applyShip:
+		applyStructure:
 		while (true) {
-			var _p41 = ship;
-			if (_p41.ctor === '[]') {
+			var _p23 = ship;
+			if (_p23.ctor === '[]') {
 				return matrix;
 			} else {
-				var _v17 = _lourds_n_cie$cyto_acoustics$Matrix$tuple3fst(
+				var _v9 = _lourds_n_cie$cyto_acoustics$GameGrid$tuple3fst(
 					A3(
-						_lourds_n_cie$cyto_acoustics$Matrix$updateRowCol,
-						A2(_elm_lang$core$Basics_ops['%'], (row + _p41._0._0) + mSize, mSize),
-						A2(_elm_lang$core$Basics_ops['%'], (col + _p41._0._1) + mSize, mSize),
+						_lourds_n_cie$cyto_acoustics$GameGrid$updateRowCol,
+						A2(_elm_lang$core$Basics_ops['%'], (row + _p23._0._0) + mSize, mSize),
+						A2(_elm_lang$core$Basics_ops['%'], (col + _p23._0._1) + mSize, mSize),
 						matrix)),
-					_v18 = mSize,
-					_v19 = row,
-					_v20 = col,
-					_v21 = _p41._1;
-				matrix = _v17;
-				mSize = _v18;
-				row = _v19;
-				col = _v20;
-				ship = _v21;
-				continue applyShip;
+					_v10 = mSize,
+					_v11 = row,
+					_v12 = col,
+					_v13 = _p23._1;
+				matrix = _v9;
+				mSize = _v10;
+				row = _v11;
+				col = _v12;
+				ship = _v13;
+				continue applyStructure;
 			}
 		}
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$addShip = F4(
-	function (matrix, ship, row, col) {
-		var _p42 = A2(_elm_lang$core$Dict$get, ship, _lourds_n_cie$cyto_acoustics$Matrix$ships);
-		if (_p42.ctor === 'Nothing') {
-			return matrix;
-		} else {
-			return A5(
-				_lourds_n_cie$cyto_acoustics$Matrix$applyShip,
-				matrix,
-				_lourds_n_cie$cyto_acoustics$Matrix$size(matrix),
-				row,
-				col,
-				_p42._0);
-		}
+var _lourds_n_cie$cyto_acoustics$GameGrid$applyPattern = F4(
+	function (matrix, pattern, row, col) {
+		return A5(
+			_lourds_n_cie$cyto_acoustics$GameGrid$applyStructure,
+			matrix,
+			_lourds_n_cie$cyto_acoustics$Matrix$size(matrix),
+			row,
+			col,
+			_lourds_n_cie$cyto_acoustics$Patterns$structureOf(pattern));
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$update = F2(
-	function (msg, matrix) {
-		var _p43 = msg;
-		switch (_p43.ctor) {
-			case 'Toggle':
-				return A3(_lourds_n_cie$cyto_acoustics$Matrix$updateRowCol, _p43._0, _p43._1, matrix);
+var _lourds_n_cie$cyto_acoustics$GameGrid$update = F2(
+	function (msg, model) {
+		var _p24 = msg;
+		switch (_p24.ctor) {
 			case 'NextGeneration':
-				return _lourds_n_cie$cyto_acoustics$Matrix$nextGenerationPlus(matrix);
+				return A2(_lourds_n_cie$cyto_acoustics$GameGrid$matrixUpdate, model, _lourds_n_cie$cyto_acoustics$GameGrid$nextGenerationPlus);
+			case 'ToggleCell':
+				var _p28 = _p24._0;
+				var _p27 = _p24._1;
+				var _p25 = model.pattern;
+				if (_p25.ctor === 'None') {
+					var _p26 = A3(_lourds_n_cie$cyto_acoustics$GameGrid$updateRowCol, _p28, _p27, model.matrix);
+					var newMatrix = _p26._0;
+					var onCells = _p26._1;
+					var freshOnCells = _p26._2;
+					return {
+						ctor: '_Tuple3',
+						_0: _elm_lang$core$Native_Utils.update(
+							model,
+							{matrix: newMatrix}),
+						_1: onCells,
+						_2: freshOnCells
+					};
+				} else {
+					return {
+						ctor: '_Tuple3',
+						_0: _elm_lang$core$Native_Utils.update(
+							model,
+							{
+								matrix: A4(_lourds_n_cie$cyto_acoustics$GameGrid$applyPattern, model.matrix, model.pattern, _p28, _p27)
+							}),
+						_1: _elm_lang$core$Native_List.fromArray(
+							[]),
+						_2: _elm_lang$core$Native_List.fromArray(
+							[])
+					};
+				}
+			case 'MouseDown':
+				return {
+					ctor: '_Tuple3',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{clicked: _p24._0}),
+					_1: _elm_lang$core$Native_List.fromArray(
+						[]),
+					_2: _elm_lang$core$Native_List.fromArray(
+						[])
+				};
 			default:
 				return {
 					ctor: '_Tuple3',
-					_0: A4(_lourds_n_cie$cyto_acoustics$Matrix$addShip, matrix, _p43._0, _p43._1, _p43._2),
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{pattern: _p24._0}),
 					_1: _elm_lang$core$Native_List.fromArray(
 						[]),
 					_2: _elm_lang$core$Native_List.fromArray(
@@ -8886,106 +9083,58 @@ var _lourds_n_cie$cyto_acoustics$Matrix$update = F2(
 				};
 		}
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$init = function (size) {
-	return A2(
-		_elm_lang$core$Array$repeat,
-		size,
-		A2(_elm_lang$core$Array$repeat, size, false));
-};
-var _lourds_n_cie$cyto_acoustics$Matrix$Ship = F3(
+var _lourds_n_cie$cyto_acoustics$GameGrid$Model = F3(
 	function (a, b, c) {
-		return {ctor: 'Ship', _0: a, _1: b, _2: c};
+		return {matrix: a, clicked: b, pattern: c};
 	});
-var _lourds_n_cie$cyto_acoustics$Matrix$NextGeneration = {ctor: 'NextGeneration'};
-var _lourds_n_cie$cyto_acoustics$Matrix$Toggle = F2(
-	function (a, b) {
-		return {ctor: 'Toggle', _0: a, _1: b};
-	});
-
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$newCells = _elm_lang$core$Native_Platform.outgoingPort(
-	'newCells',
-	function (v) {
-		return _elm_lang$core$Native_List.toArray(v).map(
-			function (v) {
-				return [v._0, v._1];
-			});
-	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$cellNotification = F3(
-	function (mode, onCells, freshOnCells) {
-		var _p0 = mode;
-		if (_p0 === 'Diff') {
-			return _lourds_n_cie$cyto_acoustics$Cytoacoustics$newCells(freshOnCells);
-		} else {
-			return _lourds_n_cie$cyto_acoustics$Cytoacoustics$newCells(onCells);
-		}
-	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$audio = _elm_lang$core$Native_Platform.outgoingPort(
-	'audio',
-	function (v) {
-		return {x: v.x, y: v.y};
-	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$randomize = _elm_lang$core$Native_Platform.incomingPort('randomize', _elm_lang$core$Json_Decode$int);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$clear = _elm_lang$core$Native_Platform.incomingPort('clear', _elm_lang$core$Json_Decode$int);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$toggleLive = _elm_lang$core$Native_Platform.incomingPort('toggleLive', _elm_lang$core$Json_Decode$string);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$nextStep = _elm_lang$core$Native_Platform.incomingPort('nextStep', _elm_lang$core$Json_Decode$string);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$ship = _elm_lang$core$Native_Platform.incomingPort('ship', _elm_lang$core$Json_Decode$string);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$switchMode = _elm_lang$core$Native_Platform.incomingPort('switchMode', _elm_lang$core$Json_Decode$string);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$toggleTheremin = _elm_lang$core$Native_Platform.incomingPort('toggleTheremin', _elm_lang$core$Json_Decode$string);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$NormedMousePosition = F2(
-	function (a, b) {
-		return {x: a, y: b};
-	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$normed = F2(
-	function (_p2, _p1) {
-		var _p3 = _p2;
-		var _p4 = _p1;
-		var _p5 = _p4.height;
-		var yNormed = _elm_lang$core$Basics$toFloat(_p5 - _p3.y) / _elm_lang$core$Basics$toFloat(_p5);
-		var xNormed = _elm_lang$core$Basics$toFloat(_p3.x) / _elm_lang$core$Basics$toFloat(_p4.width);
-		return A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$NormedMousePosition, xNormed, yNormed);
-	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$notifyAudio = function (model) {
-	return {
-		ctor: '_Tuple2',
-		_0: model,
-		_1: _lourds_n_cie$cyto_acoustics$Cytoacoustics$audio(
-			A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$normed, model.mousePosition, model.screenSize))
-	};
+var _lourds_n_cie$cyto_acoustics$GameGrid$init = function (size) {
+	return A3(
+		_lourds_n_cie$cyto_acoustics$GameGrid$Model,
+		A2(_lourds_n_cie$cyto_acoustics$Matrix$init, false, size),
+		false,
+		_lourds_n_cie$cyto_acoustics$Patterns$init);
 };
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$Model = F8(
-	function (a, b, c, d, e, f, g, h) {
-		return {matrix: a, clicked: b, live: c, mode: d, screenSize: e, mousePosition: f, ship: g, theremin: h};
+var _lourds_n_cie$cyto_acoustics$GameGrid$initRnd = F2(
+	function (seed, size) {
+		return A3(
+			_lourds_n_cie$cyto_acoustics$GameGrid$Model,
+			A3(
+				_lourds_n_cie$cyto_acoustics$Matrix$initRnd,
+				function (f) {
+					return _elm_lang$core$Native_Utils.cmp(f, 0.75) > 0;
+				},
+				seed,
+				size),
+			false,
+			_lourds_n_cie$cyto_acoustics$Patterns$init);
 	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$CellEnter = F2(
-	function (a, b) {
-		return {ctor: 'CellEnter', _0: a, _1: b};
-	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseDown = function (a) {
-	return {ctor: 'MouseDown', _0: a};
+var _lourds_n_cie$cyto_acoustics$GameGrid$PatternSelection = function (a) {
+	return {ctor: 'PatternSelection', _0: a};
 };
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$ToggleTheremin = {ctor: 'ToggleTheremin'};
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$CellClick = F2(
+var _lourds_n_cie$cyto_acoustics$GameGrid$ToggleCell = F2(
 	function (a, b) {
-		return {ctor: 'CellClick', _0: a, _1: b};
+		return {ctor: 'ToggleCell', _0: a, _1: b};
 	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$viewCell = F3(
-	function (row, col, cell) {
+var _lourds_n_cie$cyto_acoustics$GameGrid$viewCell = F4(
+	function (mouseDown, row, col, cell) {
+		var allAttributes = _elm_lang$core$Native_List.fromArray(
+			[
+				_elm_lang$html$Html_Events$onMouseEnter(
+				A2(_lourds_n_cie$cyto_acoustics$GameGrid$ToggleCell, row, col)),
+				_elm_lang$html$Html_Attributes$class(
+				cell ? 'on noselect' : 'off noselect'),
+				_elm_lang$html$Html_Events$onClick(
+				A2(_lourds_n_cie$cyto_acoustics$GameGrid$ToggleCell, row, col))
+			]);
+		var attributes = (mouseDown ? _elm_lang$core$Basics$identity : _elm_lang$core$List$drop(1))(allAttributes);
 		return A2(
 			_elm_lang$html$Html$td,
-			_elm_lang$core$Native_List.fromArray(
-				[
-					_elm_lang$html$Html_Attributes$class(
-					cell ? 'on noselect' : 'off noselect'),
-					_elm_lang$html$Html_Events$onClick(
-					A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$CellClick, row, col)),
-					_elm_lang$html$Html_Events$onMouseEnter(
-					A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$CellEnter, row, col))
-				]),
+			attributes,
 			_elm_lang$core$Native_List.fromArray(
 				[]));
 	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$viewRow = F2(
-	function (row, cells) {
+var _lourds_n_cie$cyto_acoustics$GameGrid$viewRow = F3(
+	function (mouseDown, row, cells) {
 		return A2(
 			_elm_lang$html$Html$tr,
 			_elm_lang$core$Native_List.fromArray(
@@ -8995,45 +9144,238 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$viewRow = F2(
 			_elm_lang$core$Array$toList(
 				A2(
 					_elm_lang$core$Array$indexedMap,
-					_lourds_n_cie$cyto_acoustics$Cytoacoustics$viewCell(row),
+					A2(_lourds_n_cie$cyto_acoustics$GameGrid$viewCell, mouseDown, row),
 					cells)));
 	});
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$view = function (model) {
+var _lourds_n_cie$cyto_acoustics$GameGrid$MouseDown = function (a) {
+	return {ctor: 'MouseDown', _0: a};
+};
+var _lourds_n_cie$cyto_acoustics$GameGrid$view = function (model) {
 	return A2(
 		_elm_lang$html$Html$table,
 		_elm_lang$core$Native_List.fromArray(
 			[
 				_elm_lang$html$Html_Attributes$class('noselect'),
 				_elm_lang$html$Html_Events$onMouseDown(
-				_lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseDown(true)),
+				_lourds_n_cie$cyto_acoustics$GameGrid$MouseDown(true)),
 				_elm_lang$html$Html_Events$onMouseUp(
-				_lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseDown(false))
+				_lourds_n_cie$cyto_acoustics$GameGrid$MouseDown(false))
 			]),
 		_elm_lang$core$Array$toList(
-			A2(_elm_lang$core$Array$indexedMap, _lourds_n_cie$cyto_acoustics$Cytoacoustics$viewRow, model.matrix)));
+			A2(
+				_elm_lang$core$Array$indexedMap,
+				_lourds_n_cie$cyto_acoustics$GameGrid$viewRow(model.clicked),
+				model.matrix)));
 };
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$SelectShip = function (a) {
-	return {ctor: 'SelectShip', _0: a};
+var _lourds_n_cie$cyto_acoustics$GameGrid$NextGeneration = {ctor: 'NextGeneration'};
+
+var _lourds_n_cie$cyto_acoustics$Theremin$modulation = _elm_lang$core$Native_Platform.outgoingPort(
+	'modulation',
+	function (v) {
+		return {x: v.x, y: v.y};
+	});
+var _lourds_n_cie$cyto_acoustics$Theremin$NormedMousePosition = F2(
+	function (a, b) {
+		return {x: a, y: b};
+	});
+var _lourds_n_cie$cyto_acoustics$Theremin$normed = F2(
+	function (_p1, _p0) {
+		var _p2 = _p1;
+		var _p3 = _p0;
+		var _p4 = _p3.height;
+		var yNormed = _elm_lang$core$Basics$toFloat(_p4 - _p2.y) / _elm_lang$core$Basics$toFloat(_p4);
+		var xNormed = _elm_lang$core$Basics$toFloat(_p2.x) / _elm_lang$core$Basics$toFloat(_p3.width);
+		return A2(_lourds_n_cie$cyto_acoustics$Theremin$NormedMousePosition, xNormed, yNormed);
+	});
+var _lourds_n_cie$cyto_acoustics$Theremin$notifyAudio = function (model) {
+	return {
+		ctor: '_Tuple2',
+		_0: model,
+		_1: _lourds_n_cie$cyto_acoustics$Theremin$modulation(
+			A2(_lourds_n_cie$cyto_acoustics$Theremin$normed, model.mousePosition, model.screenSize))
+	};
 };
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$ScreenResize = function (a) {
+var _lourds_n_cie$cyto_acoustics$Theremin$update = F2(
+	function (msg, model) {
+		var _p5 = msg;
+		switch (_p5.ctor) {
+			case 'MouseMove':
+				return _lourds_n_cie$cyto_acoustics$Theremin$notifyAudio(
+					_elm_lang$core$Native_Utils.update(
+						model,
+						{mousePosition: _p5._0}));
+			case 'ScreenResize':
+				return _lourds_n_cie$cyto_acoustics$Theremin$notifyAudio(
+					_elm_lang$core$Native_Utils.update(
+						model,
+						{screenSize: _p5._0}));
+			default:
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{
+							status: _elm_lang$core$Basics$not(model.status)
+						}),
+					_1: _lourds_n_cie$cyto_acoustics$Theremin$modulation(
+						A2(_lourds_n_cie$cyto_acoustics$Theremin$NormedMousePosition, 1 / 3, 1))
+				};
+		}
+	});
+var _lourds_n_cie$cyto_acoustics$Theremin$Model = F3(
+	function (a, b, c) {
+		return {screenSize: a, mousePosition: b, status: c};
+	});
+var _lourds_n_cie$cyto_acoustics$Theremin$ToggleTheremin = {ctor: 'ToggleTheremin'};
+var _lourds_n_cie$cyto_acoustics$Theremin$view = function (model) {
+	return A2(
+		_elm_lang$html$Html$section,
+		_elm_lang$core$Native_List.fromArray(
+			[]),
+		_elm_lang$core$Native_List.fromArray(
+			[
+				A2(
+				_elm_lang$html$Html$h3,
+				_elm_lang$core$Native_List.fromArray(
+					[]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html$text('Theremin')
+					])),
+				A2(
+				_elm_lang$html$Html$div,
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html_Attributes$class('onoffswitch')
+					]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						A2(
+						_elm_lang$html$Html$input,
+						_elm_lang$core$Native_List.fromArray(
+							[
+								_elm_lang$html$Html_Attributes$type$('checkbox'),
+								_elm_lang$html$Html_Attributes$id('thereminswitch'),
+								_elm_lang$html$Html_Attributes$class('onoffswitch-checkbox'),
+								_elm_lang$html$Html_Events$onCheck(
+								_elm_lang$core$Basics$always(_lourds_n_cie$cyto_acoustics$Theremin$ToggleTheremin)),
+								_elm_lang$html$Html_Attributes$checked(model.status)
+							]),
+						_elm_lang$core$Native_List.fromArray(
+							[])),
+						A2(
+						_elm_lang$html$Html$label,
+						_elm_lang$core$Native_List.fromArray(
+							[
+								_elm_lang$html$Html_Attributes$class('onoffswitch-label'),
+								_elm_lang$html$Html_Attributes$for('thereminswitch')
+							]),
+						_elm_lang$core$Native_List.fromArray(
+							[
+								A2(
+								_elm_lang$html$Html$span,
+								_elm_lang$core$Native_List.fromArray(
+									[
+										_elm_lang$html$Html_Attributes$class('onoffswitch-inner')
+									]),
+								_elm_lang$core$Native_List.fromArray(
+									[])),
+								A2(
+								_elm_lang$html$Html$span,
+								_elm_lang$core$Native_List.fromArray(
+									[
+										_elm_lang$html$Html_Attributes$class('onoffswitch-switch')
+									]),
+								_elm_lang$core$Native_List.fromArray(
+									[]))
+							]))
+					])),
+				A2(
+				_elm_lang$html$Html$small,
+				_elm_lang$core$Native_List.fromArray(
+					[]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html$text(
+						model.status ? 'Move the mouse to modulate the sounds' : 'Moving the mouse has no effect on the sound')
+					]))
+			]));
+};
+var _lourds_n_cie$cyto_acoustics$Theremin$ScreenResize = function (a) {
 	return {ctor: 'ScreenResize', _0: a};
 };
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentScreenSize = A3(
+var _lourds_n_cie$cyto_acoustics$Theremin$getCurrentScreenSize = A3(
 	_elm_lang$core$Task$perform,
 	function (_p6) {
-		return _lourds_n_cie$cyto_acoustics$Cytoacoustics$ScreenResize(
-			A2(_elm_lang$window$Window$Size, 1, 1));
+		return _lourds_n_cie$cyto_acoustics$Theremin$ScreenResize(
+			A2(_elm_lang$window$Window$Size, 0, 0));
 	},
-	_lourds_n_cie$cyto_acoustics$Cytoacoustics$ScreenResize,
+	_lourds_n_cie$cyto_acoustics$Theremin$ScreenResize,
 	_elm_lang$window$Window$size);
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseMove = function (a) {
+var _lourds_n_cie$cyto_acoustics$Theremin$init = {
+	ctor: '_Tuple2',
+	_0: A3(
+		_lourds_n_cie$cyto_acoustics$Theremin$Model,
+		A2(_elm_lang$window$Window$Size, 0, 0),
+		A2(_elm_lang$mouse$Mouse$Position, 0, 0),
+		false),
+	_1: _lourds_n_cie$cyto_acoustics$Theremin$getCurrentScreenSize
+};
+var _lourds_n_cie$cyto_acoustics$Theremin$MouseMove = function (a) {
 	return {ctor: 'MouseMove', _0: a};
+};
+var _lourds_n_cie$cyto_acoustics$Theremin$subscriptions = function (model) {
+	return model.status ? _elm_lang$core$Platform_Sub$batch(
+		_elm_lang$core$Native_List.fromArray(
+			[
+				_elm_lang$mouse$Mouse$moves(_lourds_n_cie$cyto_acoustics$Theremin$MouseMove),
+				_elm_lang$window$Window$resizes(_lourds_n_cie$cyto_acoustics$Theremin$ScreenResize)
+			])) : _elm_lang$core$Platform_Sub$none;
+};
+
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$targetSelectedValue = A2(
+	_elm_lang$core$Json_Decode$map,
+	_elm_lang$core$Result$withDefault(24),
+	A2(
+		_elm_lang$core$Json_Decode$map,
+		_elm_lang$core$String$toInt,
+		A2(
+			_elm_lang$core$Json_Decode$at,
+			_elm_lang$core$Native_List.fromArray(
+				['target', 'value']),
+			_elm_lang$core$Json_Decode$string)));
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$newCells = _elm_lang$core$Native_Platform.outgoingPort(
+	'newCells',
+	function (v) {
+		return _elm_lang$core$Native_List.toArray(v).map(
+			function (v) {
+				return [v._0, v._1];
+			});
+	});
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$cellNotification = F3(
+	function (playAll, onCells, freshOnCells) {
+		var _p0 = playAll;
+		if (_p0 === false) {
+			return _lourds_n_cie$cyto_acoustics$Cytoacoustics$newCells(freshOnCells);
+		} else {
+			return _lourds_n_cie$cyto_acoustics$Cytoacoustics$newCells(onCells);
+		}
+	});
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$Model = F4(
+	function (a, b, c, d) {
+		return {grid: a, live: b, playAll: c, theremin: d};
+	});
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$ThereminMsg = function (a) {
+	return {ctor: 'ThereminMsg', _0: a};
+};
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$PatternMsg = function (a) {
+	return {ctor: 'PatternMsg', _0: a};
+};
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$GridMsg = function (a) {
+	return {ctor: 'GridMsg', _0: a};
 };
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$SwitchMode = function (a) {
 	return {ctor: 'SwitchMode', _0: a};
-};
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$MatMsg = function (a) {
-	return {ctor: 'MatMsg', _0: a};
 };
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$ToggleLive = {ctor: 'ToggleLive'};
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$CurrentSeconds = function (a) {
@@ -9041,50 +9383,50 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$CurrentSeconds = function (a) {
 };
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$Randomize = {ctor: 'Randomize'};
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$Clear = {ctor: 'Clear'};
-var _lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentSeconds = A3(
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentCentiseconds = A3(
 	_elm_lang$core$Task$perform,
-	function (_p7) {
+	function (_p1) {
 		return _lourds_n_cie$cyto_acoustics$Cytoacoustics$Clear;
 	},
 	function (time) {
 		return _lourds_n_cie$cyto_acoustics$Cytoacoustics$CurrentSeconds(
-			_elm_lang$core$Basics$floor(time / 1000));
+			_elm_lang$core$Basics$floor(time / 100));
 	},
 	_elm_lang$core$Time$now);
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$init = function (size) {
+	var grid = _lourds_n_cie$cyto_acoustics$GameGrid$init(size);
+	var _p2 = _lourds_n_cie$cyto_acoustics$Theremin$init;
+	var theremin = _p2._0;
+	var thereminCmd = _p2._1;
 	return {
 		ctor: '_Tuple2',
-		_0: A8(
-			_lourds_n_cie$cyto_acoustics$Cytoacoustics$Model,
-			_lourds_n_cie$cyto_acoustics$Matrix$init(size),
-			false,
-			false,
-			'Diff',
-			A2(_elm_lang$window$Window$Size, 0, 0),
-			A2(_elm_lang$mouse$Mouse$Position, 0, 0),
-			_elm_lang$core$Maybe$Nothing,
-			false),
+		_0: A4(_lourds_n_cie$cyto_acoustics$Cytoacoustics$Model, grid, false, false, theremin),
 		_1: _elm_lang$core$Platform_Cmd$batch(
 			_elm_lang$core$Native_List.fromArray(
-				[_lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentSeconds, _lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentScreenSize]))
+				[
+					_lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentCentiseconds,
+					A2(_elm_lang$core$Platform_Cmd$map, _lourds_n_cie$cyto_acoustics$Cytoacoustics$ThereminMsg, thereminCmd)
+				]))
 	};
 };
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$update = F2(
 	function (msg, model) {
 		update:
 		while (true) {
-			var _p8 = msg;
-			switch (_p8.ctor) {
+			var _p3 = msg;
+			switch (_p3.ctor) {
+				case 'ResizeGame':
+					return _lourds_n_cie$cyto_acoustics$Cytoacoustics$init(_p3._0);
 				case 'Randomize':
-					return {ctor: '_Tuple2', _0: model, _1: _lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentSeconds};
+					return {ctor: '_Tuple2', _0: model, _1: _lourds_n_cie$cyto_acoustics$Cytoacoustics$getCurrentCentiseconds};
 				case 'Clear':
 					return {
 						ctor: '_Tuple2',
 						_0: _elm_lang$core$Native_Utils.update(
 							model,
 							{
-								matrix: _lourds_n_cie$cyto_acoustics$Matrix$init(
-									_lourds_n_cie$cyto_acoustics$Matrix$size(model.matrix))
+								grid: _lourds_n_cie$cyto_acoustics$GameGrid$init(
+									_lourds_n_cie$cyto_acoustics$Matrix$size(model.grid.matrix))
 							}),
 						_1: _elm_lang$core$Platform_Cmd$none
 					};
@@ -9094,23 +9436,19 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$update = F2(
 						_0: _elm_lang$core$Native_Utils.update(
 							model,
 							{
-								matrix: A2(
-									_lourds_n_cie$cyto_acoustics$Matrix$initRnd,
-									_p8._0,
-									_lourds_n_cie$cyto_acoustics$Matrix$size(model.matrix))
+								grid: A2(
+									_lourds_n_cie$cyto_acoustics$GameGrid$initRnd,
+									_p3._0,
+									_lourds_n_cie$cyto_acoustics$Matrix$size(model.grid.matrix))
 							}),
 						_1: _elm_lang$core$Platform_Cmd$none
 					};
 				case 'Tick':
-					if (model.live) {
-						var _v4 = _lourds_n_cie$cyto_acoustics$Cytoacoustics$MatMsg(_lourds_n_cie$cyto_acoustics$Matrix$NextGeneration),
-							_v5 = model;
-						msg = _v4;
-						model = _v5;
-						continue update;
-					} else {
-						return {ctor: '_Tuple2', _0: model, _1: _elm_lang$core$Platform_Cmd$none};
-					}
+					var _v2 = _lourds_n_cie$cyto_acoustics$Cytoacoustics$GridMsg(_lourds_n_cie$cyto_acoustics$GameGrid$NextGeneration),
+						_v3 = model;
+					msg = _v2;
+					model = _v3;
+					continue update;
 				case 'ToggleLive':
 					return {
 						ctor: '_Tuple2',
@@ -9121,98 +9459,56 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$update = F2(
 							}),
 						_1: _elm_lang$core$Platform_Cmd$none
 					};
-				case 'MatMsg':
-					var _p9 = A2(_lourds_n_cie$cyto_acoustics$Matrix$update, _p8._0, model.matrix);
-					var newMatrix = _p9._0;
-					var onCells = _p9._1;
-					var freshOnCells = _p9._2;
-					return {
-						ctor: '_Tuple2',
-						_0: _elm_lang$core$Native_Utils.update(
-							model,
-							{matrix: newMatrix}),
-						_1: A3(_lourds_n_cie$cyto_acoustics$Cytoacoustics$cellNotification, model.mode, onCells, freshOnCells)
-					};
-				case 'CellClick':
-					var _p12 = _p8._0;
-					var _p11 = _p8._1;
-					var _p10 = model.ship;
-					if (_p10.ctor === 'Nothing') {
-						var _v7 = _lourds_n_cie$cyto_acoustics$Cytoacoustics$MatMsg(
-							A2(_lourds_n_cie$cyto_acoustics$Matrix$Toggle, _p12, _p11)),
-							_v8 = model;
-						msg = _v7;
-						model = _v8;
-						continue update;
-					} else {
-						var _v9 = _lourds_n_cie$cyto_acoustics$Cytoacoustics$MatMsg(
-							A3(_lourds_n_cie$cyto_acoustics$Matrix$Ship, _p10._0, _p12, _p11)),
-							_v10 = model;
-						msg = _v9;
-						model = _v10;
-						continue update;
-					}
-				case 'SelectShip':
-					var _p13 = _p8._0;
-					return {
-						ctor: '_Tuple2',
-						_0: _elm_lang$core$Native_Utils.update(
-							model,
-							{
-								ship: _elm_lang$core$Native_Utils.eq(_p13, 'None') ? _elm_lang$core$Maybe$Nothing : _elm_lang$core$Maybe$Just(_p13)
-							}),
-						_1: _elm_lang$core$Platform_Cmd$none
-					};
 				case 'SwitchMode':
 					return {
 						ctor: '_Tuple2',
 						_0: _elm_lang$core$Native_Utils.update(
 							model,
-							{mode: _p8._0}),
+							{playAll: _p3._0}),
 						_1: _elm_lang$core$Platform_Cmd$none
 					};
-				case 'MouseMove':
-					return _lourds_n_cie$cyto_acoustics$Cytoacoustics$notifyAudio(
-						_elm_lang$core$Native_Utils.update(
+				case 'GridMsg':
+					var _p4 = A2(_lourds_n_cie$cyto_acoustics$GameGrid$update, _p3._0, model.grid);
+					var newGrid = _p4._0;
+					var onCells = _p4._1;
+					var freshOnCells = _p4._2;
+					return {
+						ctor: '_Tuple2',
+						_0: _elm_lang$core$Native_Utils.update(
 							model,
-							{mousePosition: _p8._0}));
-				case 'ScreenResize':
-					return _lourds_n_cie$cyto_acoustics$Cytoacoustics$notifyAudio(
-						_elm_lang$core$Native_Utils.update(
-							model,
-							{screenSize: _p8._0}));
-				case 'ToggleTheremin':
+							{grid: newGrid}),
+						_1: A3(_lourds_n_cie$cyto_acoustics$Cytoacoustics$cellNotification, model.playAll, onCells, freshOnCells)
+					};
+				case 'PatternMsg':
+					var oldGrid = model.grid;
 					return {
 						ctor: '_Tuple2',
 						_0: _elm_lang$core$Native_Utils.update(
 							model,
 							{
-								theremin: _elm_lang$core$Basics$not(model.theremin)
+								grid: _elm_lang$core$Native_Utils.update(
+									oldGrid,
+									{pattern: _p3._0})
 							}),
-						_1: _lourds_n_cie$cyto_acoustics$Cytoacoustics$audio(
-							A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$NormedMousePosition, 1 / 3, 1))
+						_1: _elm_lang$core$Platform_Cmd$none
 					};
-				case 'CellEnter':
-					if (model.clicked) {
-						var _v11 = A2(_lourds_n_cie$cyto_acoustics$Cytoacoustics$CellClick, _p8._0, _p8._1),
-							_v12 = model;
-						msg = _v11;
-						model = _v12;
-						continue update;
-					} else {
-						return {ctor: '_Tuple2', _0: model, _1: _elm_lang$core$Platform_Cmd$none};
-					}
 				default:
+					var _p5 = A2(_lourds_n_cie$cyto_acoustics$Theremin$update, _p3._0, model.theremin);
+					var newTheremin = _p5._0;
+					var thereminCmd = _p5._1;
 					return {
 						ctor: '_Tuple2',
 						_0: _elm_lang$core$Native_Utils.update(
 							model,
-							{clicked: _p8._0}),
-						_1: _elm_lang$core$Platform_Cmd$none
+							{theremin: newTheremin}),
+						_1: A2(_elm_lang$core$Platform_Cmd$map, _lourds_n_cie$cyto_acoustics$Cytoacoustics$ThereminMsg, thereminCmd)
 					};
 			}
 		}
 	});
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$ResizeGame = function (a) {
+	return {ctor: 'ResizeGame', _0: a};
+};
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$Tick = {ctor: 'Tick'};
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$subscriptions = function (model) {
 	var ticks = model.live ? _elm_lang$core$Native_List.fromArray(
@@ -9223,35 +9519,340 @@ var _lourds_n_cie$cyto_acoustics$Cytoacoustics$subscriptions = function (model) 
 			_elm_lang$core$Basics$always(_lourds_n_cie$cyto_acoustics$Cytoacoustics$Tick))
 		]) : _elm_lang$core$Native_List.fromArray(
 		[]);
-	var theremins = model.theremin ? _elm_lang$core$Native_List.fromArray(
-		[
-			_elm_lang$mouse$Mouse$moves(_lourds_n_cie$cyto_acoustics$Cytoacoustics$MouseMove),
-			_elm_lang$window$Window$resizes(_lourds_n_cie$cyto_acoustics$Cytoacoustics$ScreenResize)
-		]) : _elm_lang$core$Native_List.fromArray(
-		[]);
+	var thereminSub = A2(
+		_elm_lang$core$Platform_Sub$map,
+		_lourds_n_cie$cyto_acoustics$Cytoacoustics$ThereminMsg,
+		_lourds_n_cie$cyto_acoustics$Theremin$subscriptions(model.theremin));
 	return _elm_lang$core$Platform_Sub$batch(
 		A2(
-			_elm_lang$core$Basics_ops['++'],
-			theremins,
+			_elm_lang$core$List_ops['::'],
+			thereminSub,
 			A2(
 				_elm_lang$core$Basics_ops['++'],
 				ticks,
 				_elm_lang$core$Native_List.fromArray(
 					[
-						_lourds_n_cie$cyto_acoustics$Cytoacoustics$randomize(
-						_elm_lang$core$Basics$always(_lourds_n_cie$cyto_acoustics$Cytoacoustics$Randomize)),
-						_lourds_n_cie$cyto_acoustics$Cytoacoustics$clear(
-						_elm_lang$core$Basics$always(_lourds_n_cie$cyto_acoustics$Cytoacoustics$Clear)),
-						_lourds_n_cie$cyto_acoustics$Cytoacoustics$nextStep(
+						_elm_lang$mouse$Mouse$ups(
 						_elm_lang$core$Basics$always(
-							_lourds_n_cie$cyto_acoustics$Cytoacoustics$MatMsg(_lourds_n_cie$cyto_acoustics$Matrix$NextGeneration))),
-						_lourds_n_cie$cyto_acoustics$Cytoacoustics$toggleLive(
-						_elm_lang$core$Basics$always(_lourds_n_cie$cyto_acoustics$Cytoacoustics$ToggleLive)),
-						_lourds_n_cie$cyto_acoustics$Cytoacoustics$ship(_lourds_n_cie$cyto_acoustics$Cytoacoustics$SelectShip),
-						_lourds_n_cie$cyto_acoustics$Cytoacoustics$switchMode(_lourds_n_cie$cyto_acoustics$Cytoacoustics$SwitchMode),
-						_lourds_n_cie$cyto_acoustics$Cytoacoustics$toggleTheremin(
-						_elm_lang$core$Basics$always(_lourds_n_cie$cyto_acoustics$Cytoacoustics$ToggleTheremin))
+							_lourds_n_cie$cyto_acoustics$Cytoacoustics$GridMsg(
+								_lourds_n_cie$cyto_acoustics$GameGrid$MouseDown(false))))
 					]))));
+};
+var _lourds_n_cie$cyto_acoustics$Cytoacoustics$view = function (model) {
+	return A2(
+		_elm_lang$html$Html$div,
+		_elm_lang$core$Native_List.fromArray(
+			[
+				_elm_lang$html$Html_Attributes$class('container')
+			]),
+		_elm_lang$core$Native_List.fromArray(
+			[
+				A2(
+				_elm_lang$html$Html$div,
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html_Attributes$class('col col1-3')
+					]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						A2(
+						_elm_lang$html$Html$form,
+						_elm_lang$core$Native_List.fromArray(
+							[
+								_elm_lang$html$Html_Attributes$autocomplete(false),
+								_elm_lang$html$Html_Attributes$method('GET')
+							]),
+						_elm_lang$core$Native_List.fromArray(
+							[
+								A2(
+								_elm_lang$html$Html$section,
+								_elm_lang$core$Native_List.fromArray(
+									[]),
+								_elm_lang$core$Native_List.fromArray(
+									[
+										A2(
+										_elm_lang$html$Html$h3,
+										_elm_lang$core$Native_List.fromArray(
+											[]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html$text('Grid')
+											])),
+										A2(
+										_elm_lang$html$Html$button,
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html_Attributes$type$('button'),
+												_elm_lang$html$Html_Events$onClick(_lourds_n_cie$cyto_acoustics$Cytoacoustics$Randomize)
+											]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												A2(
+												_elm_lang$html$Html$i,
+												_elm_lang$core$Native_List.fromArray(
+													[]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html$text('⟳')
+													])),
+												_elm_lang$html$Html$text(' New random grid')
+											])),
+										A2(
+										_elm_lang$html$Html$button,
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html_Attributes$type$('button'),
+												_elm_lang$html$Html_Events$onClick(_lourds_n_cie$cyto_acoustics$Cytoacoustics$Clear)
+											]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html$text('Clear')
+											])),
+										A2(
+										_elm_lang$html$Html$div,
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html_Attributes$class('modeControl')
+											]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												A2(
+												_elm_lang$html$Html$div,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$class('onoffswitch')
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														A2(
+														_elm_lang$html$Html$input,
+														_elm_lang$core$Native_List.fromArray(
+															[
+																_elm_lang$html$Html_Attributes$type$('checkbox'),
+																_elm_lang$html$Html_Attributes$id('playAllNotesToggle'),
+																_elm_lang$html$Html_Attributes$class('onoffswitch-checkbox'),
+																_elm_lang$html$Html_Events$onCheck(_lourds_n_cie$cyto_acoustics$Cytoacoustics$SwitchMode),
+																_elm_lang$html$Html_Attributes$checked(model.playAll)
+															]),
+														_elm_lang$core$Native_List.fromArray(
+															[])),
+														A2(
+														_elm_lang$html$Html$label,
+														_elm_lang$core$Native_List.fromArray(
+															[
+																_elm_lang$html$Html_Attributes$class('onoffswitch-label'),
+																_elm_lang$html$Html_Attributes$for('playAllNotesToggle')
+															]),
+														_elm_lang$core$Native_List.fromArray(
+															[
+																A2(
+																_elm_lang$html$Html$span,
+																_elm_lang$core$Native_List.fromArray(
+																	[
+																		_elm_lang$html$Html_Attributes$class('onoffswitch-inner')
+																	]),
+																_elm_lang$core$Native_List.fromArray(
+																	[])),
+																A2(
+																_elm_lang$html$Html$span,
+																_elm_lang$core$Native_List.fromArray(
+																	[
+																		_elm_lang$html$Html_Attributes$class('onoffswitch-switch')
+																	]),
+																_elm_lang$core$Native_List.fromArray(
+																	[]))
+															]))
+													])),
+												A2(
+												_elm_lang$html$Html$small,
+												_elm_lang$core$Native_List.fromArray(
+													[]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														A2(
+														_elm_lang$html$Html$em,
+														_elm_lang$core$Native_List.fromArray(
+															[]),
+														_elm_lang$core$Native_List.fromArray(
+															[
+																_elm_lang$html$Html$text(
+																model.playAll ? 'Play sound for all cells' : 'Play only sound of new cells')
+															]))
+													]))
+											])),
+										A2(
+										_elm_lang$html$Html$label,
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html_Attributes$for('gridSizeSelector')
+											]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html$text('Size: ')
+											])),
+										A2(
+										_elm_lang$html$Html$select,
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html_Attributes$id('gridSizeSelector'),
+												_elm_lang$html$Html_Attributes$value(
+												_elm_lang$core$Basics$toString(
+													_lourds_n_cie$cyto_acoustics$Matrix$size(model.grid.matrix))),
+												A2(
+												_elm_lang$html$Html_Events$on,
+												'change',
+												A2(_elm_lang$core$Json_Decode$map, _lourds_n_cie$cyto_acoustics$Cytoacoustics$ResizeGame, _lourds_n_cie$cyto_acoustics$Cytoacoustics$targetSelectedValue))
+											]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												A2(
+												_elm_lang$html$Html$option,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$value('8')
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html$text('8 × 8')
+													])),
+												A2(
+												_elm_lang$html$Html$option,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$value('16')
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html$text('16 × 16')
+													])),
+												A2(
+												_elm_lang$html$Html$option,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$value('24')
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html$text('24 × 24')
+													])),
+												A2(
+												_elm_lang$html$Html$option,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$value('32')
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html$text('32 × 32')
+													])),
+												A2(
+												_elm_lang$html$Html$option,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$value('48')
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html$text('48 × 48')
+													])),
+												A2(
+												_elm_lang$html$Html$option,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$value('64')
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html$text('64 × 64')
+													]))
+											]))
+									])),
+								A2(
+								_elm_lang$html$Html$section,
+								_elm_lang$core$Native_List.fromArray(
+									[]),
+								_elm_lang$core$Native_List.fromArray(
+									[
+										A2(
+										_elm_lang$html$Html$h3,
+										_elm_lang$core$Native_List.fromArray(
+											[]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html$text('Iterations')
+											])),
+										A2(
+										_elm_lang$html$Html$div,
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html_Attributes$class('controller')
+											]),
+										_elm_lang$core$Native_List.fromArray(
+											[
+												_elm_lang$html$Html$text('Auto: '),
+												A2(
+												_elm_lang$html$Html$button,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$type$('button'),
+														model.live ? _elm_lang$html$Html_Attributes$class('fa fa-pause') : _elm_lang$html$Html_Attributes$class('fa fa-play'),
+														_elm_lang$html$Html_Events$onClick(_lourds_n_cie$cyto_acoustics$Cytoacoustics$ToggleLive)
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[])),
+												A2(
+												_elm_lang$html$Html$br,
+												_elm_lang$core$Native_List.fromArray(
+													[]),
+												_elm_lang$core$Native_List.fromArray(
+													[])),
+												_elm_lang$html$Html$text('Step-by-step: '),
+												A2(
+												_elm_lang$html$Html$button,
+												_elm_lang$core$Native_List.fromArray(
+													[
+														_elm_lang$html$Html_Attributes$type$('button'),
+														_elm_lang$html$Html_Attributes$class('fa fa-step-forward'),
+														model.live ? _elm_lang$html$Html_Attributes$disabled(true) : _elm_lang$html$Html_Events$onClick(_lourds_n_cie$cyto_acoustics$Cytoacoustics$Tick)
+													]),
+												_elm_lang$core$Native_List.fromArray(
+													[]))
+											]))
+									])),
+								A2(
+								_elm_lang$html$Html_App$map,
+								_lourds_n_cie$cyto_acoustics$Cytoacoustics$ThereminMsg,
+								_lourds_n_cie$cyto_acoustics$Theremin$view(model.theremin)),
+								A2(
+								_elm_lang$html$Html_App$map,
+								_lourds_n_cie$cyto_acoustics$Cytoacoustics$PatternMsg,
+								_lourds_n_cie$cyto_acoustics$Patterns$view(model.grid.pattern))
+							]))
+					])),
+				A2(
+				_elm_lang$html$Html$div,
+				_elm_lang$core$Native_List.fromArray(
+					[
+						_elm_lang$html$Html_Attributes$class('col col2-3')
+					]),
+				_elm_lang$core$Native_List.fromArray(
+					[
+						A2(
+						_elm_lang$html$Html$div,
+						_elm_lang$core$Native_List.fromArray(
+							[
+								_elm_lang$html$Html_Attributes$id('matrix'),
+								_elm_lang$html$Html_Attributes$class('matrix')
+							]),
+						_elm_lang$core$Native_List.fromArray(
+							[
+								A2(
+								_elm_lang$html$Html_App$map,
+								_lourds_n_cie$cyto_acoustics$Cytoacoustics$GridMsg,
+								_lourds_n_cie$cyto_acoustics$GameGrid$view(model.grid))
+							]))
+					]))
+			]));
 };
 var _lourds_n_cie$cyto_acoustics$Cytoacoustics$main = {
 	main: _elm_lang$html$Html_App$programWithFlags(
